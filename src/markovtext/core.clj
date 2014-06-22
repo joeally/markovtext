@@ -17,7 +17,7 @@
        (let [choice (get choices (rand-int (count choices)))]
          (lazy-seq (cons
                     (first prev)
-                    (quite-likely-seq (conj (vec (drop 1 prev)) choice) col-trans n))))))
+                    (quite-likely-seq (conj (vec (drop 1 prev)) choice) col-trans n cust-get))))))
   ([prev col-trans n] (quite-likely-seq prev col-trans n get)))
 
 (defn collect-transitions

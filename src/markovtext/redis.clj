@@ -1,6 +1,8 @@
 (ns markovtext.redis
   (:gen-class)
-  (:require [taoensso.carmine :as car :refer (wcar)]))
+  (:require
+   clojure.core
+   [taoensso.carmine :as car :refer (wcar)]))
 
 (def server-conn {:pool nil :spec nil})
 
@@ -22,3 +24,4 @@
 (defn update-transitions! [col-trans]
   (for [[k li] col-trans]
     (update-transition! k li)))
+

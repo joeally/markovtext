@@ -1,4 +1,4 @@
-ns markovtext.reddit
+(ns markovtext.reddit
   (:gen-class)
   (:require
    [clj-http.client :as client]
