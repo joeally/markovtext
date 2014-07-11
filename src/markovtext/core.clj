@@ -1,15 +1,11 @@
 (ns markovtext.core
   (:gen-class)
   (:require
-   [clojure.set])
+   [clojure.set]
+   [markovtext.redis :as redis]
+   [markovtext.cli :as cli])
   (:use
    incanter.core))
-
-(defn m-chain [transition init]
-  "returns a function which returns the probabilities for each state after n steps when given a transition matrix and initial probabilities"
-  (let [mtransition (matrix transition) minit (matrix init)]
-    (fn [n]
-      (reduce mmult (cons (trans minit) (repeat n mtransition)))))) ;; mmult over the initial probabilities and n transition matrices
 
 (defn quite-likely-seq
   ([prev col-trans n cust-get]
@@ -17,7 +13,7 @@
        (let [choice (get choices (rand-int (count choices)))]
          (lazy-seq (cons
                     (first prev)
-                    (quite-likely-seq (conj (vec (drop 1 prev)) choice) col-trans n cust-get))))))
+                    (quite-likely-seq (seq (conj (vec (drop 1 prev)) choice)) col-trans n cust-get))))))
   ([prev col-trans n] (quite-likely-seq prev col-trans n get)))
 
 (defn collect-transitions
@@ -78,5 +74,12 @@
 
 (defn -main
   "I don't do a whole lot ... yet."
-  []
-  (println "some message"))
+  [& args]
+  (let [{opts :opts args :args} (apply cli/process-args args)] 
+    (if (contains? opts "generate")
+      (println
+       (stringify-seq
+        (take
+         100;;(comp not nil?)
+         (quite-likely-seq (redis/get-random-start 1) nil 1 #(redis/redis-get %2))))))))
+

@@ -25,3 +25,9 @@
   (for [[k li] col-trans]
     (update-transition! k li)))
 
+(defn get-random-start [n]
+  (let [keys (->> (wcar* (car/keys "*"))
+                  (map :key)
+                  (filter (comp #(= n %) count)))]
+    (get (vec keys) (rand-int (count (vec keys))))))
+
