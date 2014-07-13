@@ -3,6 +3,7 @@
   (:require
    [clojure.set]
    [markovtext.redis :as redis]
+   [markovtext.TransitionTable :as tt]
    [markovtext.cli :as cli])
   (:use
    incanter.core))
@@ -24,21 +25,15 @@
         (for [[k v] (group-by #(take n %) transitions)] [k (map last v)]))))
   ([seqn] (collect-transitions seqn 1)))
 
+(defn collect-transitons-tt [seqn n]
+  (let [transitions (partition (inc n) 1 seqn)]
+    ;; Reduce over transitions adding to an (initally empty) TransitionTable
+    (reduce #(tt/add-transition %1 (take n %2) (last %2)) {} transitions)))
+
 (defn concat-transitions [t1 t2]
   (into {}
         (for [k (clojure.set/union (keys t1) (keys t2))]
           [k (concat (get t1 k '()) (get t2 k '()))])))
-
-(defn transition-probs [col-trans poss-syms]
-  "Takes a list of possible symbols and a map containing a symbol to a list of symbols that have appeared after it and creates a map detailing the transition probabilities"
-  (into {} (for [[k v] col-trans]
-             [k (into {} (for [sym poss-syms]
-                           [sym (/ (count (filter #(= sym %) v)) (count v))]))])))
-
-(defn init-probs [col-trans]
-  (let [num-trans (sum (map (comp count second) col-trans))]
-    (into {}  (for [[k v] col-trans]
-                [k (/ (count v) num-trans)]))))
 
 
 (defn process-corpus [corpus]
