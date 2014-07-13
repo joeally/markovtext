@@ -4,5 +4,6 @@
    [clojure.string :as string]))
 
 (defn process-args [& args]
-  {:opts (into #{} (for [opt args :when (= \- (first opt))] (string/replace opt #"-+" "")))
-   :args (filter (comp #(not= % \-) first) args)})
+  {:single-opts (filter (partial re-matches #"^-\w+") args)
+   :double-opts (filter (partial re-matches #"^--\w+") args)
+   :args (filter (partial re-matches #"^\w+") args)})
