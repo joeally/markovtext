@@ -52,7 +52,7 @@
       nil)))
 
 (defn get-listing [url after]
-  (->> (urlopen url {:limit 1000} nil)
+  (->> (urlopen url (if (nil? after) {:limit 1000} {:limit 1000 :after after}) nil)
        (:data)))
 
 (defn get-listings
@@ -61,7 +61,7 @@
      (let [listing (get-listing url after)]
        (lazy-cat (:children listing) (get-listings url (:after listing)))))
   ([url]
-     (let [listing (get-listing url "")]
+     (let [listing (get-listing url nil)]
        (lazy-cat (:children listing) (get-listings url (:after listing))))
      ))
 
