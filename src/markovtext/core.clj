@@ -40,12 +40,11 @@
   ([corpus] (corpus-transitions corpus 1))
   ([corpus n]
      (->> corpus
-          (process-corpus)
           (map #(collect-transitions % n))
           (reduce tt/concat-tt))))
 
 (defn corpus-likely-seq [corpus n]
-  (let [transitions (corpus-transitions corpus n)]
+  (let [transitions (corpus-transitions (process-corpus corpus) n)]
     (let [start (rand-nth (vec (keys transitions)))]
       (quite-likely-seq start transitions n))))
 
