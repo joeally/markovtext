@@ -4,29 +4,30 @@
    [clojure.set]
    [markovtext.redis :as redis]
    [markovtext.reddit :as reddit]
-   [markovtext.transitiontable :as tt]
+   [markovtext.TransitionTable :as tt]
+   [com.gfredericks.debug-repl :refer [break! unbreak!]]
+   [clojure.core.async :as async]
    [markovtext.cli :as cli])
   (:use
-   incanter.core))
+   incanter.core)
+  (:import markovtext.redis.RedisConn))
 
-(defn quite-likely-seq [prev trans-tbl n]
+(defn quite-likely-seq [fst trans-tbl]
   (map
    first
    (iterate
     (fn [prev]
       (conj (vec (drop 1 prev)) (tt/rand-next trans-tbl prev)))
-    prev)))
+    fst)))
 
-(defn collect-transitions
-  ([seqn n]
-     (->> seqn
-          ;;split sequence into overlapping sequences of n+1
-          (partition (inc n) 1)
-          ;;convert these sequnces into vector in the form [fromvec to]
-          (map (fn [part] [(vec (take n part)) (last part)]))
-          ;;collect transition vectors into a map
-          (reduce (fn [tt [from to]] (tt/add-transition tt from to)) {})))
-  ([seqn] (collect-transitions seqn 1)))
+(defn col-transitions [seqn n]
+  (->> seqn
+       (partition (inc n) 1)
+       ;;convert transition to [from-vec to-symbol] pairs
+       (map (fn [part] [(vec (drop-last part)) (last part)]))))
+
+(defn make-transition-table [tbl transitions]
+  (reduce (fn [tt [from to]] (tt/add-transition tt from to)) tbl transitions))
 
 (defn process-corpus [corpus]
   (for [doc corpus]
@@ -34,19 +35,22 @@
          (clojure.string/lower-case)
          (clojure.string/replace #"[\.,?:;]" #(clojure.string/join [" " (str %)]))
          (clojure.string/replace #"(\\n){1,}" "")
-         (clojure.string/split #" "))))
+         (clojure.string/split #" ")
+         ((fn [x] (remove empty? x))))))
+
 
 (defn corpus-transitions
-  ([corpus] (corpus-transitions corpus 1))
-  ([corpus n]
-     (->> corpus
-          (map #(collect-transitions % n))
-          (reduce tt/concat-tt))))
+  ([tbl corpus n]
+      (->> corpus
+           (map #(col-transitions % n))
+           (apply concat)
+           (make-transition-table tbl)))
+  ([tbl corpus] (corpus-transitions tbl corpus 1)))
 
 (defn corpus-likely-seq [corpus n]
-  (let [transitions (corpus-transitions (process-corpus corpus) n)]
+  (let [transitions (corpus-transitions {} (process-corpus corpus) n)]
     (let [start (rand-nth (vec (keys transitions)))]
-      (quite-likely-seq start transitions n))))
+      (quite-likely-seq start transitions))))
 
 (defn stringify-seq [seq]
   (->>
@@ -55,15 +59,38 @@
    (clojure.string/join " ")
    (#(clojure.string/replace % #" +[\.\?,]" (fn [s] (str (second s)))))))
 
+(defn producer [channel running]
+  (let [corpus (process-corpus (reddit/reddit-corpus "technology"))]
+    (async/go
+     (loop [comment-seqs corpus]
+       (if @running
+         (let []
+           (doseq [transition (col-transitions (first comment-seqs) 1)]
+             (async/>! channel transition))
+           (recur (rest comment-seqs)))
+         nil)))))
 
+(defn consumer [channel running redis-conn]
+  (async/go
+   (while @running
+     (let [[from-vec to-symbol] (async/<! channel)]
+       (tt/add-transition redis-conn from-vec to-symbol)))))
+
+(def running (atom true))
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
-  (let [{opts :opts args :args} (apply cli/process-args args)] 
-    (if (contains? opts "generate")
-      (println
-       (stringify-seq
-        (take
-         100;;(comp not nil?)
-         (quite-likely-seq (redis/get-random-start 1) nil 1 #(redis/redis-get %2))))))))
-
+  (let [reddit-chan (async/chan)
+        redis-conn (RedisConn. nil nil {:app "markovtext" :sr "technology" :n 1})]
+    (producer reddit-chan running)
+    (consumer reddit-chan running redis-conn)
+    (while @running
+      (let [msg (read-line)]
+        (if (= msg "close")
+          (do
+            (async/close! reddit-chan)
+            (swap! running not)
+            (println "closed"))
+          (println
+           (stringify-seq
+            (take 25 (quite-likely-seq (tt/rand-first redis-conn) redis-conn)))))))))
